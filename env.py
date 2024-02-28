@@ -1,38 +1,104 @@
 from enum import IntEnum
-from typing import Tuple, Optional, List
-from gym import Env, spaces
-from gym.utils import seeding
-from gym.envs.registration import register
+from typing import Tuple, Optional, List, Dict
+from gymnasium import Env, spaces, register
+import gymnasium as gym
+import numpy as np
 
 
-def register_env() -> None:
+def register_env(id: str, **kwargs):
     """Register custom gym environment so that we can use `gym.make()`
-
-    In your main file, call this function before using `gym.make()` to use the Four Rooms environment.
-        register_env()
-        env = gym.make('WindyGridWorld-v0')
-
-    There are a couple of ways to create Gym environments of the different variants of Windy Grid World.
-    1. Create separate classes for each env and register each env separately.
-    2. Create one class that has flags for each variant and register each env separately.
-
-        Example:
-        (Original)     register(id="WindyGridWorld-v0", entry_point="env:WindyGridWorldEnv")
-        (King's moves) register(id="WindyGridWorldKings-v0", entry_point="env:WindyGridWorldEnv", **kwargs)
-
-        The kwargs will be passed to the entry_point class.
-
-    3. Create one class that has flags for each variant and register env once. You can then call gym.make using kwargs.
-
-        Example:
-        (Original)     gym.make("WindyGridWorld-v0")
-        (King's moves) gym.make("WindyGridWorld-v0", **kwargs)
-
-        The kwargs will be passed to the __init__() function.
-
-    Choose whichever method you like.
+    Note: the max_episode_steps option controls the time limit of the environment.
+    You can remove the argument to make FourRooms run without a timeout.
     """
-    # TODO
+    register(id=id, **kwargs)
+
+
+class RandomWalkAction(IntEnum):
+    LEFT = 0
+    RIGHT = 1
+
+def get_random_walk_env(num_states=7):
+    """
+    Get the RandomWalk environment
+    Returns:
+        env (RandomWalk): RandomWalk environment
+    """
+    try:
+        spec = gym.spec('RandomWalk-v0')
+    except:
+        register_env("RandomWalk-v0", entry_point="env:RandomWalk", max_episode_steps=1000)
+    finally:
+        return gym.make('RandomWalk-v0', num_states=num_states)
+
+# RandomWalk Env as described in Example 6.2 and 7.1 of Reinforcement Learning: An Introduction
+class RandomWalk(Env):
+    def __init__(self, num_states=7):
+        self.num_states = num_states
+        self.state = 0
+        self.action_space = spaces.Discrete(len(RandomWalkAction))
+        self.observation_space = spaces.Discrete(num_states)
+
+    def step(self, action: RandomWalkAction):
+        """
+        Take one step in the environment.
+
+        Takes in an action and returns the (next state, reward, done, info).
+
+        Args:
+            action (Action): an action provided by the agent
+        
+        Returns:
+            state (int): next state
+            reward (float): reward for this transition
+            done (bool): whether the episode has ended, in which case further step() calls will return undefined results
+            truncated (bool): whether the episode was truncated (not used in this environment)
+            info (dict): contains auxiliary diagnostic information (helpful for debugging, and sometimes learning). Not used in this assignment.
+        """
+        assert self.action_space.contains(action)
+        if action == 0:
+            self.state = max(0, self.state - 1)
+        else:
+            self.state = min(self.num_states - 1, self.state + 1)
+
+        if self.state == self.num_states - 1:
+            reward = 1
+            done = True
+        elif self.state == 0:
+            reward = -1
+            done = True
+        else:
+            reward = 0
+            done = False
+        return self.state, reward, done, False, {}
+
+    def reset(self, options: Dict = {}):
+        """
+        Reset the environment to the starting state
+
+        Args:
+            options (dict): options for the environment (not used in this environment)
+        
+        Returns:
+            state (int): returns the initial state
+        """
+        # TODO: this might need to depend on the self.num_states
+        self.state = 3
+        return self.state, {}
+
+# def get_four_rooms_env(goal_pos=(10, 10)):
+#     """
+#     Get the FourRooms environment
+#     Args:
+#         goal_pos (Tuple[int, int]): goal position
+#     Returns:
+#         env (FourRoomsEnv): FourRooms environment
+#     """
+#     try:
+#         spec = gym.spec('FourRooms-v0')
+#     except:
+#         register_env("FourRooms-v0", entry_point="env:FourRoomsEnv", max_episode_steps=459)
+#     finally:
+#         return gym.make('FourRooms-v0', goal_pos=goal_pos)
 
 
 class Action(IntEnum):
@@ -85,21 +151,7 @@ class WindyGridWorldEnv(Env):
         self.goal_pos = (7, 3)
         self.agent_pos = None
 
-    def seed(self, seed: Optional[int] = None) -> List[int]:
-        """Fix seed of environment
-
-        In order to make the environment completely reproducible, call this function and seed the action space as well.
-            env = gym.make(...)
-            env.seed(seed)
-            env.action_space.seed(seed)
-
-        This function does not need to be used for this assignment, it is given only for reference.
-        """
-
-        self.np_random, seed = seeding.np_random(seed)
-        return [seed]
-
-    def reset(self):
+    def reset(self, options: Dict = {}):
         self.agent_pos = self.start_pos
         return self.agent_pos
 
