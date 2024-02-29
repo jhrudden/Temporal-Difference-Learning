@@ -1,10 +1,50 @@
-import gym
+import gymnasium as gym
 from typing import Optional
 from collections import defaultdict
 import numpy as np
 from tqdm import trange
 
 from policy import get_epsilon_greedy_policy
+
+def mc_control_on_policy(env: gym.Env, num_episodes: int, gamma: float, epsilon: float, verbose: bool = False):
+    """Monte Carlo control with epsilon-greedy policy. (Every-visit MC policy evaluation and improvement)
+
+    Args:
+        env (gym.Env): a Gym API compatible environment
+        num_episodes (int): Number of episodes
+        gamma (float): Discount factor of MDP
+        epsilon (float): epsilon for epsilon greedy
+    """
+    Q = defaultdict(lambda: np.zeros(env.action_space.n))
+    C = defaultdict(lambda: np.zeros(env.action_space.n))
+    policy = get_epsilon_greedy_policy(env, epsilon, Q)
+    episode_at_time = []
+
+    if verbose:
+        _range = trange(num_episodes)
+    else:
+        _range = range(num_episodes)
+    
+    for i in _range:
+        s = env.reset()
+        done = False
+        truncated = False
+        episode = []
+        while not done and not truncated:
+            episode_at_time.append(i)
+            a, _ = policy(s)
+            s_prime, r, done, truncated, _ = env.step(a)
+            episode.append((s, a, r))
+            s = s_prime
+        
+        G = 0
+        for t in range(len(episode) - 1, -1, -1):
+            s, a, r = episode[t]
+            G = gamma * G + r
+            C[s][a] += 1
+            Q[s][a] += (1 / C[s][a]) * (G - Q[s][a])
+    
+    return dict(Q), episode_at_time
 
 def sarsa(env: gym.Env, num_steps: int, gamma: float, epsilon: float, step_size: float, verbose: bool = False):
     """SARSA algorithm.
