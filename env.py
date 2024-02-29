@@ -105,7 +105,7 @@ def get_windy_gridworld_env(**kwargs):
     try:
         spec = gym.spec('WindyGridWorld-v0')
     except:
-        register_env("WindyGridWorld-v0", entry_point="env:WindyGridWorldEnv", max_episode_steps=1000)
+        register_env("WindyGridWorld-v0", entry_point="env:WindyGridWorldEnv", max_episode_steps=8000)
     finally:
         return gym.make('WindyGridWorld-v0', **kwargs)
 
@@ -141,8 +141,8 @@ class WindyGridWorldEnv(Env):
         """
 
         # Grid dimensions (x, y)
-        self.rows = 10
-        self.cols = 7
+        self.cols = 10
+        self.rows = 7
 
         # Wind
         # TODO define self.wind as either a dict (keys would be states) or multidimensional array (states correspond to indices)
@@ -154,7 +154,7 @@ class WindyGridWorldEnv(Env):
 
         self.action_space = spaces.Discrete(len(Action))
         self.observation_space = spaces.Tuple(
-            (spaces.Discrete(self.rows), spaces.Discrete(self.cols))
+            (spaces.Discrete(self.cols), spaces.Discrete(self.rows))
         )
 
         # Set start_pos and goal_pos
@@ -190,10 +190,7 @@ class WindyGridWorldEnv(Env):
         x, y = self.agent_pos
 
         new_x = max(0, min(x + dx, self.cols - 1))
-        new_y = max(0, min(y + dy, self.rows - 1))
-
-        # add wind effect
-        new_y += self.wind[new_x]
+        new_y = max(0, min(y + dy + self.wind[x], self.rows - 1))
 
         self.agent_pos = (new_x, new_y)
 
