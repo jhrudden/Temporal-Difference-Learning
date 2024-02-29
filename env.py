@@ -17,9 +17,14 @@ class RandomWalkAction(IntEnum):
     LEFT = 0
     RIGHT = 1
 
-def get_random_walk_env(num_states=7):
+def get_random_walk_env(**kwargs):
     """
     Get the RandomWalk environment
+
+    Args:
+        num_states (int): number of states in the environment
+        rewards (List[int]): rewards for the leftmost and rightmost states
+
     Returns:
         env (RandomWalk): RandomWalk environment
     """
@@ -28,15 +33,16 @@ def get_random_walk_env(num_states=7):
     except:
         register_env("RandomWalk-v0", entry_point="env:RandomWalk", max_episode_steps=1000)
     finally:
-        return gym.make('RandomWalk-v0', num_states=num_states)
+        return gym.make('RandomWalk-v0', **kwargs)
 
 # RandomWalk Env as described in Example 6.2 and 7.1 of Reinforcement Learning: An Introduction
 class RandomWalk(Env):
-    def __init__(self, num_states=7):
+    def __init__(self, num_states=7, rewards=[0,1]):
         self.num_states = num_states
         self.state = 0
         self.action_space = spaces.Discrete(len(RandomWalkAction))
         self.observation_space = spaces.Discrete(num_states)
+        self.rewards = rewards
 
     def step(self, action: RandomWalkAction):
         """
@@ -61,10 +67,10 @@ class RandomWalk(Env):
             self.state = min(self.num_states - 1, self.state + 1)
 
         if self.state == self.num_states - 1:
-            reward = 1
+            reward = self.rewards[1]
             done = True
         elif self.state == 0:
-            reward = -1
+            reward = self.rewards[0]
             done = True
         else:
             reward = 0
@@ -85,21 +91,23 @@ class RandomWalk(Env):
         self.state = 3
         return self.state, {}
 
-# def get_four_rooms_env(goal_pos=(10, 10)):
-#     """
-#     Get the FourRooms environment
-#     Args:
-#         goal_pos (Tuple[int, int]): goal position
-#     Returns:
-#         env (FourRoomsEnv): FourRooms environment
-#     """
-#     try:
-#         spec = gym.spec('FourRooms-v0')
-#     except:
-#         register_env("FourRooms-v0", entry_point="env:FourRoomsEnv", max_episode_steps=459)
-#     finally:
-#         return gym.make('FourRooms-v0', goal_pos=goal_pos)
 
+def get_windy_gridworld_env(**kwargs):
+    """
+    Get the WindyGridWorld environment
+
+    Args:
+        kwargs (dict): keyword arguments for the WindyGridWorld environment
+
+    Returns:
+        env (WindyGridWorldEnv): WindyGridWorld environment
+    """
+    try:
+        spec = gym.spec('WindyGridWorld-v0')
+    except:
+        register_env("WindyGridWorld-v0", entry_point="env:WindyGridWorldEnv", max_episode_steps=1000)
+    finally:
+        return gym.make('WindyGridWorld-v0', **kwargs)
 
 class Action(IntEnum):
     """Action"""
@@ -108,7 +116,6 @@ class Action(IntEnum):
     DOWN = 1
     RIGHT = 2
     UP = 3
-
 
 def actions_to_dxdy(action: Action) -> Tuple[int, int]:
     """
@@ -139,7 +146,11 @@ class WindyGridWorldEnv(Env):
 
         # Wind
         # TODO define self.wind as either a dict (keys would be states) or multidimensional array (states correspond to indices)
-        self.wind = None
+        self.wind = np.zeros(self.cols)
+        # update wind strength for each column
+        self.wind[3:6] = 1
+        self.wind[6:8] = 2
+        self.wind[8] = 1
 
         self.action_space = spaces.Discrete(len(Action))
         self.observation_space = spaces.Tuple(
@@ -153,7 +164,7 @@ class WindyGridWorldEnv(Env):
 
     def reset(self, options: Dict = {}):
         self.agent_pos = self.start_pos
-        return self.agent_pos
+        return self.agent_pos, {}
 
     def step(self, action: Action) -> Tuple[Tuple[int, int], float, bool, dict]:
         """Take one step in the environment.
@@ -170,9 +181,24 @@ class WindyGridWorldEnv(Env):
             done (bool): whether the episode has ended, in which case further step() calls will return undefined results
             info (dict): contains auxiliary diagnostic information (helpful for debugging, and sometimes learning). Not used in this assignment.
         """
+        assert self.action_space.contains(action)
 
-        # TODO
-        reward = None
-        done = None
+        reward = -1
+        done = False
 
-        return self.agent_pos, reward, done, {}
+        dx, dy = actions_to_dxdy(action)
+        x, y = self.agent_pos
+
+        new_x = max(0, min(x + dx, self.cols - 1))
+        new_y = max(0, min(y + dy, self.rows - 1))
+
+        # add wind effect
+        new_y += self.wind[new_x]
+
+        self.agent_pos = (new_x, new_y)
+
+        if self.agent_pos == self.goal_pos:
+            reward = 0
+            done = True
+
+        return self.agent_pos, reward, done, False, {}
