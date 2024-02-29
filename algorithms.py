@@ -2,9 +2,11 @@ import gym
 from typing import Optional
 from collections import defaultdict
 import numpy as np
+from tqdm import trange
 
+from policy import get_epsilon_greedy_policy
 
-def sarsa(env: gym.Env, num_steps: int, gamma: float, epsilon: float, step_size: float):
+def sarsa(env: gym.Env, num_steps: int, gamma: float, epsilon: float, step_size: float, verbose: bool = False):
     """SARSA algorithm.
 
     Args:
@@ -14,8 +16,29 @@ def sarsa(env: gym.Env, num_steps: int, gamma: float, epsilon: float, step_size:
         epsilon (float): epsilon for epsilon greedy
         step_size (float): step size
     """
-    # TODO
-    pass
+    Q = defaultdict(lambda: np.zeros(env.action_space.n))
+    policy = get_epsilon_greedy_policy(env, epsilon, Q)
+    episode_at_time = []
+    
+    if verbose:
+        _range = trange(num_steps)
+    else:
+        _range = range(num_steps)
+
+    for i in _range:
+        s, _ = env.reset()
+        a, _ = policy(s)
+        done = False
+        truncated = False
+        while not done and not truncated:
+            episode_at_time.append(i)
+            s_prime, r, done, truncated, _ = env.step(a)
+            a_prime, _ = policy(s_prime)
+            Q[s][a] += step_size * (r + gamma * Q[s_prime][a_prime] - Q[s][a])
+            s = s_prime
+            a = a_prime
+    
+    return dict(Q), episode_at_time
 
 
 def nstep_sarsa(
@@ -24,6 +47,8 @@ def nstep_sarsa(
     gamma: float,
     epsilon: float,
     step_size: float,
+    n: int,
+    verbose = False
 ):
     """N-step SARSA
 
@@ -34,9 +59,49 @@ def nstep_sarsa(
         epsilon (float): epsilon for epsilon greedy
         step_size (float): step size
     """
-    # TODO
-    pass
+    Q = defaultdict(lambda: np.zeros(env.action_space.n))
+    policy = get_epsilon_greedy_policy(env, epsilon, Q)
+    episode_at_time = []
 
+    if verbose:
+        _range = trange(num_steps)
+    else:
+        _range = range(num_steps)
+    
+    for i in _range:
+        s, _ = env.reset()
+        a, _ = policy(s)
+        done = False
+        truncated = False
+        T = float('inf')
+        S = [s]
+        A = [a]
+        R = [0]
+        t = 0
+        while True:
+            if not done and not truncated:
+                episode_at_time.append(i)
+                s, r, done, truncated, _ = env.step(a)
+                S.append(s)
+                R.append(r)
+                if done:
+                    T = t + 1
+                else:
+                    a, _ = policy(s)
+                A.append(a)
+            
+            tau =  t - n + 1
+            if tau >= 0:
+                G = sum([gamma ** (i - tau - 1) * R[i] for i in range(tau + 1, min(tau + n, T))])
+                if tau + n < T:
+                    G += gamma ** n * Q[S[tau + n]][A[tau + n]]
+                Q[S[tau]][A[tau]] += step_size * (G - Q[S[tau]][A[tau]])
+            
+            if tau == T - 1:
+                break
+            t += 1
+    
+    return dict(Q), episode_at_time
 
 def exp_sarsa(
     env: gym.Env,
@@ -44,6 +109,7 @@ def exp_sarsa(
     gamma: float,
     epsilon: float,
     step_size: float,
+    verbose = False
 ):
     """Expected SARSA
 
@@ -54,8 +120,30 @@ def exp_sarsa(
         epsilon (float): epsilon for epsilon greedy
         step_size (float): step size
     """
-    # TODO
-    pass
+    Q = defaultdict(lambda: np.zeros(env.action_space.n))
+    policy = get_epsilon_greedy_policy(env, epsilon, Q)
+    episode_at_time = []
+
+    if verbose:
+        _range = trange(num_steps)
+    else:
+        _range = range(num_steps)
+    
+    for i in _range:
+        s, _ = env.reset()
+        a, _ = policy(s)
+        done = False
+        truncated = False
+        while not done and not truncated:
+            episode_at_time.append(i)
+            s_prime, r, done, truncated, _ = env.step(a)
+            a_prime, action_probs = policy(s_prime)
+            expected_value = np.dot(Q[s_prime], action_probs)
+            Q[s][a] += step_size * (r + gamma * expected_value - Q[s][a])
+            s = s_prime
+            a = a_prime
+    
+    return dict(Q), episode_at_time
 
 
 def q_learning(
@@ -74,8 +162,22 @@ def q_learning(
         epsilon (float): epsilon for epsilon greedy
         step_size (float): step size
     """
-    # TODO
-    pass
+    Q = defaultdict(lambda: np.zeros(env.action_space.n))
+    policy = get_epsilon_greedy_policy(env, epsilon, Q)
+    episode_at_time = []
+    
+    for i in range(num_steps):
+        s, _ = env.reset()
+        done = False
+        truncated = False
+        while not done and not truncated:
+            episode_at_time.append(i)
+            a, _ = policy(s)
+            s_prime, r, done, truncated, _ = env.step(a)
+            Q[s][a] += step_size * (r + gamma * np.max(Q[s_prime]) - Q[s][a])
+            s = s_prime
+    
+    return dict(Q), episode_at_time
 
 
 def td_prediction(env: gym.Env, gamma: float, episodes, alpha: float, n=1) -> defaultdict:
@@ -93,9 +195,22 @@ def td_prediction(env: gym.Env, gamma: float, episodes, alpha: float, n=1) -> de
     V = defaultdict(float)
 
     for episode in episodes:
-        targets = learning_targets(V, gamma, episode, n)
-        for t, (s, a, r) in enumerate(episode):
-            V[s] += (alpha * (targets[t] - V[s]))
+        T = len(episode)
+        for t in range(T):
+            G = 0
+            final_t = min(t + n, T)
+            for i in range(t, final_t):
+                s, a, r = episode[i]
+                G += (gamma ** (i - t)) * r
+
+            # bootstrap
+            if final_t < T:
+                s, a, r = episode[final_t]
+                G += (gamma ** (n+1)) * V[s]
+            
+            # update
+            s, a, r = episode[t]
+            V[s] += alpha * (G - V[s])
     
     return dict(V)
 
