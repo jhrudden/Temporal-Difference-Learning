@@ -43,6 +43,18 @@ class RandomWalk(Env):
         self.action_space = spaces.Discrete(len(RandomWalkAction))
         self.observation_space = spaces.Discrete(num_states)
         self.rewards = rewards
+        self.start_pos = num_states // 2
+    
+    def calculate_optimal_value_function(self):
+        """
+        Calculate the optimal value function for the RandomWalk environment
+
+        Returns:
+            value_function (np.ndarray): optimal value function for the RandomWalk environment
+        """
+        value_function = self.rewards[1] * np.arange(1, self.num_states - 1) / (self.num_states - 1) 
+        value_function += self.rewards[0] * value_function[::-1]
+        return value_function
 
     def step(self, action: RandomWalkAction):
         """
@@ -88,7 +100,7 @@ class RandomWalk(Env):
             state (int): returns the initial state
         """
         # TODO: this might need to depend on the self.num_states
-        self.state = 3
+        self.state = self.start_pos
         return self.state, {}
 
 
