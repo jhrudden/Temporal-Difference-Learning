@@ -6,7 +6,7 @@ from tqdm import trange, tqdm
 
 from policy import get_epsilon_greedy_policy
 
-def mc_control_on_policy(env: gym.Env, num_steps: int, gamma: float, epsilon: float, step_size=None, verbose: bool = False):
+def mc_control_on_policy(env: gym.Env, num_steps: int, gamma: float, epsilon: float, verbose: bool = False):
     """Monte Carlo control with epsilon-greedy policy. (Every-visit MC policy evaluation and improvement)
 
     Args:
@@ -33,11 +33,14 @@ def mc_control_on_policy(env: gym.Env, num_steps: int, gamma: float, epsilon: fl
         done = False
         truncated = False
         episode = []
+        first_occurence = {}
         while not done and not truncated and curr_t < num_steps:
             episode_at_time[curr_t] = episode_num
             a, _ = policy(s)
             s_prime, r, done, truncated, _ = env.step(a)
             episode.append((s, a, r))
+            if s not in first_occurence:
+                first_occurence[s] = len(episode) - 1
             s = s_prime
             curr_t+=1
             if verbose:
@@ -49,11 +52,9 @@ def mc_control_on_policy(env: gym.Env, num_steps: int, gamma: float, epsilon: fl
         for t in range(len(episode) - 1, -1, -1):
             s, a, r = episode[t]
             G = gamma * G + r
-            C[s][a] += 1
-            if step_size is None:
+            if first_occurence[s] == t:
+                C[s][a] += 1
                 Q[s][a] += (1 / C[s][a]) * (G - Q[s][a])
-            else:
-                Q[s][a] += step_size * (G - Q[s][a])
         
         if curr_t >= num_steps:
             break
@@ -281,7 +282,7 @@ def q_learning(
     return dict(Q), episode_at_time
 
 
-def td_prediction(env: gym.Env, gamma: float, episodes, alpha: float, n=1) -> defaultdict:
+def td_prediction(env: gym.Env, gamma: float, episodes, alpha: float, n=1, verbose: bool = False) -> defaultdict:
     """TD Prediction
 
     This generic function performs TD prediction for any n >= 1. TD(0) corresponds to n=1.
@@ -292,10 +293,16 @@ def td_prediction(env: gym.Env, gamma: float, episodes, alpha: float, n=1) -> de
         episodes : the evaluation episodes. Should be a sequence of (s, a, r) tuples or a dict.
         alpha (float): Step size
         n (int): The number of steps to use for TD update. Use n=1 for TD(0).
+        verbose (bool): whether to show progress bar
     """
     V = defaultdict(float)
 
-    for episode in tqdm(episodes, desc="TD Prediction"):
+    if verbose:
+        pbar = tqdm(total=len(episodes), desc="TD Prediction")
+    
+    V_per_episode = []
+
+    for episode in episodes:
         T = len(episode)
         for t in range(T):
             G = 0
@@ -307,11 +314,16 @@ def td_prediction(env: gym.Env, gamma: float, episodes, alpha: float, n=1) -> de
             # bootstrap
             if final_t < T:
                 s, a, r = episode[final_t]
-                G += (gamma ** (n+1)) * V[s]
+                G += (gamma ** (n)) * V[s]
             
             # update
             s, a, r = episode[t]
             V[s] += alpha * (G - V[s])
+
+        if verbose:
+            pbar.update(1)
+        
+        V_per_episode.append(dict(V))
     
-    return dict(V)
+    return dict(V), V_per_episode
 
